@@ -7,6 +7,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { db } from "@/lib/prisma";
 import { login } from "./_actions/auth";
 import { JWT } from "next-auth/jwt";
+import { randomBytes } from 'crypto';
 
 // Validate required environment variables
 const requiredEnvVars = ['NEXTAUTH_URL', 'NEXTAUTH_SECRET', 'DATABASE_URL'];
@@ -250,7 +251,7 @@ export const authOptions: NextAuthOptions = {
     maxAge: 7 * 24 * 60 * 60, // 7 days
     updateAge: 24 * 60 * 60, // 1 day
     generateSessionToken: () => {
-      return crypto.randomBytes(32).toString('hex');
+      return randomBytes(32).toString('hex');
     },
   },
   pages: {
