@@ -212,19 +212,46 @@ export const authOptions: NextAuthOptions = {
       }
     },
     async redirect({ url, baseUrl }) {
-      console.log("Redirect Callback:", { url, baseUrl });
-      // Allow NextAuth to handle /auth routes and prevent infinite loops
-      if (url.startsWith('/api/auth') || url.startsWith('/auth')) {
-        return url;
+      try {
+        console.log("Redirect Callback:", { url, baseUrl });
+        
+        // Validate and sanitize URLs
+        const sanitizedUrl = new URL(url, baseUrl);
+        const sanitizedBaseUrl = new URL(baseUrl);
+        
+        // Prevent redirect loops and malicious redirects
+        if (url.includes('/auth/signin') || 
+            !sanitizedUrl.hostname.includes(sanitizedBaseUrl.hostname)) {
+          console.log("Preventing redirect loop or malicious redirect");
+          return sanitizedBaseUrl.toString();
+        }
+
+        // Handle auth routes
+        if (sanitizedUrl.pathname.startsWith('/api/auth') || 
+            sanitizedUrl.pathname.startsWith('/auth')) {
+          // Only allow specific auth routes
+          const allowedAuthPaths = ['/auth/signin', '/auth/signout', '/auth/error'];
+          if (allowedAuthPaths.some(path => sanitizedUrl.pathname === path)) {
+            return sanitizedUrl.toString();
+          }
+          return sanitizedBaseUrl.toString();
+        }
+
+        // Default to base URL for all other routes
+        return sanitizedBaseUrl.toString();
+      } catch (error) {
+        console.error("Redirect Error:", error);
+        return baseUrl;
       }
-      // Redirect to base URL for non-auth routes
-      return baseUrl;
     }
   },
   session: {
     strategy: "jwt",
     maxAge: 7 * 24 * 60 * 60, // 7 days
     updateAge: 24 * 60 * 60, // 1 day
+    generateSessionToken: () => {
+      return crypto.randomBytes(32).toString('hex');
+    },
   },
   pages: {
     signIn: '/auth/signin',
@@ -236,13 +263,28 @@ export const authOptions: NextAuthOptions = {
   debug: process.env.NODE_ENV !== 'production',
   logger: {
     error(code, metadata) {
-      console.error("NextAuth Error:", { code, metadata });
+      console.error("NextAuth Error:", { 
+        code, 
+        metadata,
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV
+      });
     },
     warn(code) {
-      console.warn("NextAuth Warning:", { code });
+      console.warn("NextAuth Warning:", { 
+        code,
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV
+      });
     },
     debug(code, metadata) {
-      console.debug("NextAuth Debug:", { code, metadata });
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug("NextAuth Debug:", { 
+          code, 
+          metadata,
+          timestamp: new Date().toISOString()
+        });
+      }
     }
   },
 };
