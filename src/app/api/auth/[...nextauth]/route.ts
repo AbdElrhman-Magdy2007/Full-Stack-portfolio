@@ -23,6 +23,13 @@ const securityHeaders = {
 
 // Create a reusable error response helper
 const createErrorResponse = (message: string, status: number = 500, details?: any) => {
+  console.error("Auth Error Response:", {
+    message,
+    status,
+    details,
+    timestamp: new Date().toISOString()
+  });
+
   return new Response(
     JSON.stringify({ 
       error: message,
@@ -40,73 +47,83 @@ const createErrorResponse = (message: string, status: number = 500, details?: an
   );
 };
 
-// Create a reusable success response helper
-const createSuccessResponse = (data: any, status: number = 200) => {
-  return new Response(
-    JSON.stringify({
-      ...data,
-      timestamp: new Date().toISOString()
-    }),
-    { 
-      status,
-      headers: { 
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, max-age=0',
-        ...securityHeaders
-      }
-    }
-  );
-};
-
-// Initialize NextAuth handler with custom error handling
-const handler = NextAuth({
-  ...authOptions,
-  pages: {
-    ...authOptions.pages,
-    error: '/auth/error', // توجيه الأخطاء إلى صفحة الخطأ المخصصة
-  },
-  callbacks: {
-    ...authOptions.callbacks,
-    async redirect({ url, baseUrl }) {
-      // التحقق من أن عنوان URL آمن
-      if (url.startsWith(baseUrl)) return url;
-      if (url.startsWith('/')) return `${baseUrl}${url}`;
-      return baseUrl;
-    },
-  },
-});
-
-// Middleware for rate limiting and security checks
-async function withSecurityMiddleware(request: NextRequest, handler: Function) {
+// Security middleware
+const withSecurityMiddleware = async (request: NextRequest, handler: (req: NextRequest) => Promise<Response>) => {
   try {
-    // Get client IP
+    // Rate limiting
     const ip = request.headers.get('x-forwarded-for') || 'unknown';
-    
-    // Check rate limit
     const isRateLimited = await rateLimiter.check(ip);
+    
     if (isRateLimited) {
-      return createErrorResponse('Too many requests', 429);
+      return createErrorResponse(
+        'Too many requests. Please try again later.',
+        429
+      );
     }
 
-    // Validate request method
+    // Method validation
     if (!['GET', 'POST'].includes(request.method)) {
       return createErrorResponse('Method not allowed', 405);
     }
 
-    // Check content type for POST requests
+    // Content type check for POST requests
     if (request.method === 'POST') {
       const contentType = request.headers.get('content-type');
       if (!contentType?.includes('application/json')) {
-        return createErrorResponse('Invalid content type', 415);
+        return createErrorResponse('Content type must be application/json', 415);
       }
     }
 
     return await handler(request);
   } catch (error) {
     console.error('Security Middleware Error:', error);
-    return createErrorResponse(authConfig.messages.errors.default);
+    return createErrorResponse('Internal server error', 500);
   }
-}
+};
+
+// Initialize NextAuth handler with custom error handling
+const handler = NextAuth({
+  ...authOptions,
+  debug: process.env.NODE_ENV !== 'production',
+  logger: {
+    error(code, metadata) {
+      console.error("NextAuth Error:", { code, metadata });
+    },
+    warn(code) {
+      console.warn("NextAuth Warning:", { code });
+    },
+    debug(code, metadata) {
+      console.debug("NextAuth Debug:", { code, metadata });
+    }
+  },
+  pages: {
+    ...authOptions.pages,
+    error: '/auth/error',
+  },
+  callbacks: {
+    ...authOptions.callbacks,
+    async signIn({ user, account, profile, email, credentials }) {
+      try {
+        console.log("SignIn Callback:", {
+          userId: user?.id,
+          email: user?.email,
+          accountType: account?.type,
+          timestamp: new Date().toISOString()
+        });
+        return true;
+      } catch (error) {
+        console.error("SignIn Callback Error:", error);
+        return false;
+      }
+    },
+    async redirect({ url, baseUrl }) {
+      console.log("Redirect Callback:", { url, baseUrl });
+      if (url.startsWith(baseUrl)) return url;
+      if (url.startsWith('/')) return `${baseUrl}${url}`;
+      return baseUrl;
+    },
+  },
+});
 
 export async function GET(request: NextRequest) {
   return withSecurityMiddleware(request, async (req: NextRequest) => {
@@ -141,22 +158,20 @@ export async function POST(request: NextRequest) {
       const validationResult = loginSchema().safeParse(body);
       
       if (!validationResult.success) {
-        console.error('Validation Error:', validationResult.error.format());
         return createErrorResponse(
           'Invalid request data',
           400,
-          validationResult.error.format()
+          { validation: validationResult.error.format() }
         );
       }
 
-      // Process the request
       const response = await handler(req);
       
       // Add security headers
       Object.entries(securityHeaders).forEach(([key, value]) => {
         response.headers.set(key, value);
       });
-      
+
       return response;
     } catch (error) {
       console.error('Auth POST Error:', {

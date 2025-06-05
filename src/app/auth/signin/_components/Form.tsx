@@ -59,11 +59,14 @@ const LoginForm = memo(() => {
         data[key] = value.toString();
       });
 
+      console.log('Login attempt:', { email: data.email, timestamp: new Date().toISOString() });
+
       const newErrors: FormErrors = {};
       if (!data.email) newErrors.email = ['Email is required'];
       if (!data.password) newErrors.password = ['Password is required'];
 
       if (Object.keys(newErrors).length > 0) {
+        console.log('Validation errors:', newErrors);
         dispatchErrors({ type: 'SET_ERRORS', payload: newErrors });
         toast.error('Please fill in all required fields', {
           style: toastStyles.error,
@@ -77,37 +80,52 @@ const LoginForm = memo(() => {
         setIsLoading(true);
         dispatchErrors({ type: 'CLEAR_ERRORS' });
 
+        console.log('Attempting to sign in with credentials...');
         const res = await signIn('credentials', {
           email: data.email,
           password: data.password,
           redirect: false,
+          callbackUrl: '/',
+        });
+
+        console.log('Sign in response:', { 
+          ok: res?.ok, 
+          error: res?.error,
+          status: res?.status,
+          url: res?.url 
         });
 
         if (res?.error) {
           try {
             const parsedError = JSON.parse(res.error);
+            console.log('Parsed error:', parsedError);
+            
             const validationErrors = parsedError.validationError || {};
-
             dispatchErrors({ type: 'SET_ERRORS', payload: validationErrors });
-            if (parsedError.responseError && parsedError.responseError !== lastToastMessage) {
-              toast.error(parsedError.responseError, {
+
+            const errorMessage = parsedError.responseError || 'Authentication failed';
+            if (errorMessage !== lastToastMessage) {
+              toast.error(errorMessage, {
                 style: toastStyles.error,
                 duration: 3000,
                 className: 'glass-card border-gradient animate-glow toast-error',
               });
-              setLastToastMessage(parsedError.responseError);
+              setLastToastMessage(errorMessage);
             }
           } catch (parseError) {
-            if ('An unexpected error occurred' !== lastToastMessage) {
-              toast.error('An unexpected error occurred', {
+            console.error('Error parsing error response:', parseError);
+            const errorMessage = 'An unexpected error occurred during authentication';
+            if (errorMessage !== lastToastMessage) {
+              toast.error(errorMessage, {
                 style: toastStyles.error,
                 duration: 3000,
                 className: 'glass-card border-gradient animate-glow toast-error',
               });
-              setLastToastMessage('An unexpected error occurred');
+              setLastToastMessage(errorMessage);
             }
           }
-        } else if (res?.ok && !res.error) { // Strict check for success
+        } else if (res?.ok) {
+          console.log('Login successful, redirecting...');
           if ('Login successful' !== lastToastMessage) {
             toast.success('Login successful', {
               style: toastStyles.success,
@@ -116,26 +134,29 @@ const LoginForm = memo(() => {
             });
             setLastToastMessage('Login successful');
           }
-          router.replace('/'); // Redirect only on success
+          router.replace('/');
         } else {
           console.warn('Unexpected signIn response:', res);
-          if ('Login failed' !== lastToastMessage) {
-            toast.error('Login failed', {
+          const errorMessage = 'Login failed - Please try again';
+          if (errorMessage !== lastToastMessage) {
+            toast.error(errorMessage, {
               style: toastStyles.error,
               duration: 3000,
               className: 'glass-card border-gradient animate-glow toast-error',
             });
-            setLastToastMessage('Login failed');
+            setLastToastMessage(errorMessage);
           }
         }
       } catch (error) {
-        if ('An unexpected error occurred' !== lastToastMessage) {
-          toast.error('An unexpected error occurred', {
+        console.error('Login error:', error);
+        const errorMessage = 'An unexpected error occurred';
+        if (errorMessage !== lastToastMessage) {
+          toast.error(errorMessage, {
             style: toastStyles.error,
             duration: 3000,
             className: 'glass-card border-gradient animate-glow toast-error',
           });
-          setLastToastMessage('An unexpected error occurred');
+          setLastToastMessage(errorMessage);
         }
       } finally {
         setIsLoading(false);

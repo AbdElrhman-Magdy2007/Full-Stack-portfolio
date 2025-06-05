@@ -9,6 +9,7 @@ export default function AuthError() {
   const searchParams = useSearchParams();
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [errorDetails, setErrorDetails] = useState<any>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => {
     if (!searchParams) return;
@@ -17,15 +18,28 @@ export default function AuthError() {
     const specificMessage = searchParams.get('message');
     const detailsParam = searchParams.get('details');
     
+    // Collect debug information
+    const debug = {
+      errorType,
+      specificMessage,
+      hasDetails: !!detailsParam,
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+      userAgent: navigator.userAgent,
+    };
+    setDebugInfo(debug);
+    
     if (specificMessage) {
       setErrorMessage(specificMessage);
     }
 
     if (detailsParam) {
       try {
-        setErrorDetails(JSON.parse(detailsParam));
+        const parsedDetails = JSON.parse(detailsParam);
+        setErrorDetails(parsedDetails);
       } catch (e) {
         console.error('Error parsing error details:', e);
+        setErrorDetails({ parseError: 'Failed to parse error details' });
       }
     }
 
@@ -87,8 +101,17 @@ export default function AuthError() {
             </p>
             {errorDetails && (
               <div className="mt-2 p-4 bg-red-50 rounded-md">
-                <pre className="text-xs text-red-800 overflow-auto">
+                <h3 className="text-sm font-medium text-red-800">تفاصيل الخطأ:</h3>
+                <pre className="mt-2 text-xs text-red-800 overflow-auto">
                   {JSON.stringify(errorDetails, null, 2)}
+                </pre>
+              </div>
+            )}
+            {debugInfo && (
+              <div className="mt-2 p-4 bg-gray-50 rounded-md">
+                <h3 className="text-sm font-medium text-gray-800">معلومات التصحيح:</h3>
+                <pre className="mt-2 text-xs text-gray-800 overflow-auto">
+                  {JSON.stringify(debugInfo, null, 2)}
                 </pre>
               </div>
             )}

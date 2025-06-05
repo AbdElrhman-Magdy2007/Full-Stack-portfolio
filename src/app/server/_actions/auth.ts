@@ -38,6 +38,7 @@ export async function login(
   try {
     // Validate credentials
     if (!credentials?.email || !credentials?.password) {
+      console.log("Login attempt with missing credentials");
       return {
         status: 400,
         message: "Email and password are required",
@@ -48,6 +49,7 @@ export async function login(
     // Validate with Zod schema
     const result = loginSchema().safeParse(credentials);
     if (!result.success) {
+      console.log("Login validation failed:", result.error.format());
       return {
         status: 400,
         error: result.error.formErrors.fieldErrors,
@@ -55,12 +57,23 @@ export async function login(
       };
     }
 
-    // Find user
+    // Find user with detailed logging
+    console.log("Attempting to find user:", { email: credentials.email });
     const user = await db.user.findUnique({
       where: { email: credentials.email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        password: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     if (!user) {
+      console.log("User not found:", { email: credentials.email });
       return {
         status: 401,
         message: "Invalid email or password",
@@ -68,15 +81,27 @@ export async function login(
       };
     }
 
-    // Verify password
+    // Verify password with detailed logging
+    console.log("Verifying password for user:", { userId: user.id });
     const isValidPassword = await bcrypt.compare(credentials.password, user.password);
+    
     if (!isValidPassword) {
+      console.log("Invalid password for user:", { userId: user.id });
       return {
         status: 401,
         message: "Invalid email or password",
         className: "text-red-500",
       };
     }
+
+    // Log successful login
+    console.log("Login successful for user:", { 
+      userId: user.id, 
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    });
 
     // Return user data (excluding password)
     return {
@@ -89,10 +114,12 @@ export async function login(
       },
     };
   } catch (error) {
+    // Enhanced error logging
     console.error("Login Error:", {
       error: error instanceof Error ? error.message : "Unknown error",
       timestamp: new Date().toISOString(),
       email: credentials.email,
+      stack: error instanceof Error ? error.stack : undefined,
     });
 
     return {

@@ -1,10 +1,13 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { buttonVariants } from '@/components/ui/button';
 import { Pages, Routes } from '@/constants/enums';
 import Link from 'next/link';
 import LoginForm from './_components/Form';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { Loader } from 'lucide-react';
 
 // Fallback component in case Form fails to load
 const FallbackForm: React.FC = () => (
@@ -104,6 +107,20 @@ const ParticleBackground: React.FC = () => {
 
 export default function SignInPage() {
   const [sparkles, setSparkles] = useState<{ id: number; x: number; y: number }[]>([]);
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Check if user is already authenticated
+    if (status === 'authenticated') {
+      console.log('User is already authenticated, redirecting...');
+      router.replace('/');
+    } else if (status === 'unauthenticated') {
+      console.log('User is not authenticated, showing login form');
+      setIsLoading(false);
+    }
+  }, [status, router]);
 
   const containerVariants = {
     hidden: { opacity: 0, y: 50, scale: 0.9 },
@@ -137,6 +154,17 @@ export default function SignInPage() {
     setTimeout(() => setSparkles((prev) => prev.filter((s) => s.id !== id)), 600);
   };
 
+  if (isLoading) {
+    return (
+      <main className="relative flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 overflow-hidden dark">
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <Loader className="h-8 w-8 animate-spin text-blue-400" />
+          <p className="text-slate-300">Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="relative flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 overflow-hidden dark">
       <ParticleBackground />
@@ -163,7 +191,7 @@ export default function SignInPage() {
           className="text-center text-slate-300 text-sm sm:text-base mt-8"
           variants={childVariants}
         >
-          Don’t have an account?{' '}
+          Don't have an account?{' '}
           <span className="sparkle-container relative inline-block">
             <Link
               href={`/${Routes.AUTH}/${Pages.Register}`}

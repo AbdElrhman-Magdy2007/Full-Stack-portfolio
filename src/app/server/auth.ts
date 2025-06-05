@@ -9,7 +9,7 @@ import { login } from "./_actions/auth";
 import { JWT } from "next-auth/jwt";
 
 // Validate required environment variables
-const requiredEnvVars = ['NEXTAUTH_URL', 'NEXTAUTH_SECRET'];
+const requiredEnvVars = ['NEXTAUTH_URL', 'NEXTAUTH_SECRET', 'DATABASE_URL'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
 if (missingEnvVars.length > 0) {
@@ -78,14 +78,18 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         try {
           if (!credentials?.email || !credentials?.password) {
+            console.log("Missing credentials");
             throw new Error(JSON.stringify({
               validationError: { email: ["Email is required"], password: ["Password is required"] }
             }));
           }
 
+          console.log("Attempting to authorize user:", { email: credentials.email });
+
           const response = await login(credentials, Languages.ENGLISH as LanguageType);
 
           if (response.status === 200 && response.user) {
+            console.log("User authorized successfully:", { userId: response.user.id });
             return {
               id: response.user.id,
               name: response.user.name,
@@ -94,6 +98,7 @@ export const authOptions: NextAuthOptions = {
             };
           }
 
+          console.error("Authorization failed:", response);
           throw new Error(JSON.stringify({
             validationError: response.error,
             responseError: response.message,
@@ -110,20 +115,31 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       try {
         if (user) {
+          console.log("JWT Callback - User provided:", { userId: user.id });
           return {
             ...token,
             id: user.id,
             name: user.name,
             email: user.email,
             role: user.role,
+            image: user.image,
+            phone: user.phone,
+            country: user.country,
+            city: user.city,
+            postalCode: user.postalCode,
+            streetAddress: user.streetAddress,
           } as JWT;
         }
 
-        if (!token.email) return token as JWT;
+        if (!token.email) {
+          console.log("JWT Callback - No email in token");
+          return token as JWT;
+        }
 
+        console.log("JWT Callback - Fetching user from DB:", { email: token.email });
         const dbUser = await db.user.findUnique({
           where: { email: token.email },
           select: {
@@ -141,10 +157,11 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!dbUser) {
-          console.error("User not found in database:", token.email);
+          console.error("JWT Callback - User not found in database:", { email: token.email });
           return token as JWT;
         }
 
+        console.log("JWT Callback - User found in database:", { userId: dbUser.id });
         return {
           ...token,
           id: dbUser.id,
@@ -170,6 +187,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       try {
         if (token) {
+          console.log("Session Callback - Setting user data:", { userId: token.id });
           session.user = {
             id: token.id,
             name: token.name,
@@ -194,13 +212,14 @@ export const authOptions: NextAuthOptions = {
       }
     },
     async redirect({ url, baseUrl }) {
+      console.log("Redirect Callback:", { url, baseUrl });
       // Allow NextAuth to handle /auth routes and prevent infinite loops
-      if (url.startsWith('/api/auth') || url.startsWith(`/${Routes.AUTH}`)) {
+      if (url.startsWith('/api/auth') || url.startsWith('/auth')) {
         return url;
       }
       // Redirect to base URL for non-auth routes
       return baseUrl;
-    },
+    }
   },
   session: {
     strategy: "jwt",
@@ -208,11 +227,22 @@ export const authOptions: NextAuthOptions = {
     updateAge: 24 * 60 * 60, // 1 day
   },
   pages: {
-    signIn: `/${Routes.AUTH}${Pages.LOGIN}`,
-    error: `/${Routes.AUTH}/${Pages.ERROR}`,
-    signOut: `/${Routes.AUTH}/${Pages.LOGOUT}`,
-    verifyRequest: `/${Routes.AUTH}/${Pages.VERIFY_REQUEST}`,
+    signIn: '/auth/signin',
+    error: '/auth/error',
+    signOut: '/auth/signout',
+    verifyRequest: '/auth/verify-request',
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === Environments.DEV,
+  debug: process.env.NODE_ENV !== 'production',
+  logger: {
+    error(code, metadata) {
+      console.error("NextAuth Error:", { code, metadata });
+    },
+    warn(code) {
+      console.warn("NextAuth Warning:", { code });
+    },
+    debug(code, metadata) {
+      console.debug("NextAuth Debug:", { code, metadata });
+    }
+  },
 };
