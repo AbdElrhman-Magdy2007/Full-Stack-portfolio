@@ -7,8 +7,8 @@
   "regions": ["fra1"],
   
   "env": {
-    "NEXTAUTH_URL": "https://full-stack-portfolio-a333-2e72oea0q.vercel.app",
-    "NEXT_PUBLIC_API_URL": "https://full-stack-portfolio-a333-i49walgev.vercel.app",
+    "NEXTAUTH_URL": "https://full-stack-portfolio-a333.vercel.app",
+    "NEXT_PUBLIC_API_URL": "https://full-stack-portfolio-a333.vercel.app",
     "NODE_ENV": "production"
   },
   "headers": [

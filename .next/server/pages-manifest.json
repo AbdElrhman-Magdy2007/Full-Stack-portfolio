@@ -1,14 +1,1 @@
-{
-  "/_app": "pages/_app.js",
-  "/_error": "pages/_error.js",
-  "/AddProject": "pages/AddProject.html",
-  "/Profile": "pages/Profile.html",
-  "/Index": "pages/Index.html",
-  "/NotFound": "pages/NotFound.html",
-  "/Settingsss": "pages/Settingsss.html",
-  "/Projects": "pages/Projects.html",
-  "/SignUppp": "pages/SignUppp.html",
-  "/SignInnn": "pages/SignInnn.html",
-  "/_document": "pages/_document.js",
-  "/404": "pages/404.html"
-}
+{}

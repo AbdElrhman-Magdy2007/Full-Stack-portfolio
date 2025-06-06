@@ -21,7 +21,7 @@ export default withAuth(
       const url = request.nextUrl.clone();
       const pathname = url.pathname;
       const baseUrl = process.env.NEXTAUTH_URL || request.url.split('/').slice(0, 3).join('/');
-      console.log("Middleware - Processing request:", { pathname, baseUrl });
+      console.log("Pathname:", pathname);
 
       // إضافة رؤوس الأمان
       const requestHeaders = new Headers(request.headers);
@@ -29,12 +29,6 @@ export default withAuth(
       requestHeaders.set("x-frame-options", "DENY");
       requestHeaders.set("x-content-type-options", "nosniff");
       requestHeaders.set("referrer-policy", "strict-origin-when-cross-origin");
-      requestHeaders.set("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
-      requestHeaders.set("x-xss-protection", "1; mode=block");
-      requestHeaders.set(
-        "content-security-policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
-      );
 
       const response = NextResponse.next({
         request: { headers: requestHeaders },
@@ -47,12 +41,6 @@ export default withAuth(
       });
       const isAuthenticated = !!token;
 
-      console.log("Middleware - Auth status:", { 
-        isAuthenticated, 
-        pathname,
-        timestamp: new Date().toISOString()
-      });
-
       // تعريف أنواع المسارات
       const isAuthPage = pathname.startsWith(`/${Routes.AUTH}`);
       const protectedRoutes = [Routes.PROFILE, Routes.ADMIN];
@@ -60,63 +48,54 @@ export default withAuth(
         pathname.startsWith(`/${route}`)
       );
 
-      // التحقق من الصلاحيات
-      if (isProtectedRoute && isAuthenticated) {
-        const userRole = token?.role as UserRole;
-        if (pathname.startsWith(`/${Routes.ADMIN}`) && userRole !== UserRole.ADMIN) {
-          console.log("Middleware - Access denied:", { 
-            pathname, 
-            userRole,
-            requiredRole: UserRole.ADMIN
-          });
-          return NextResponse.redirect(new URL(`/${Routes.AUTH}/${Pages.ERROR}`, request.url));
-        }
+      // إعادة توجيه المستخدمين غير المصادقين
+      if (!isAuthenticated && isProtectedRoute) {
+        const redirectUrl = new URL(`/${Routes.AUTH}${Pages.LOGIN}`, baseUrl);
+        redirectUrl.searchParams.set('callbackUrl', pathname);
+        console.log("Redirecting to Login:", redirectUrl.toString());
+        return NextResponse.redirect(redirectUrl);
       }
 
-      // توجيه المستخدمين المسجلين بعيداً عن صفحات المصادقة
+      // إعادة توجيه المستخدمين المصادقين
       if (isAuthPage && isAuthenticated) {
-        console.log("Middleware - Redirecting authenticated user from auth page");
-        return NextResponse.redirect(new URL('/', request.url));
+        const role = token?.role as UserRole;
+        const redirectUrl = new URL(
+          role === UserRole.ADMIN ? `/${Routes.ADMIN}` : `/${Routes.PROFILE}`,
+          baseUrl
+        );
+        console.log("Redirecting Authenticated User to:", redirectUrl.toString());
+        return NextResponse.redirect(redirectUrl);
       }
 
-      // توجيه المستخدمين غير المسجلين إلى صفحة تسجيل الدخول
-      if (isProtectedRoute && !isAuthenticated) {
-        console.log("Middleware - Redirecting unauthenticated user to login");
-        const callbackUrl = encodeURIComponent(request.url);
-        return NextResponse.redirect(new URL(`/${Routes.AUTH}/${Pages.LOGIN}?callbackUrl=${callbackUrl}`, request.url));
+      // تقييد الوصول إلى مسارات المشرف
+      if (
+        isAuthenticated &&
+        pathname.startsWith(`/${Routes.ADMIN}`) &&
+        token?.role !== UserRole.ADMIN
+      ) {
+        const redirectUrl = new URL(`/${Routes.PROFILE}`, baseUrl);
+        console.log("Redirecting Non-Admin to Profile:", redirectUrl.toString());
+        return NextResponse.redirect(redirectUrl);
       }
 
       return response;
     } catch (error) {
-      console.error("Middleware Error:", {
-        error: error instanceof Error ? error.message : "Unknown error",
-        pathname: request.nextUrl.pathname,
-        timestamp: new Date().toISOString()
-      });
-      return NextResponse.redirect(new URL(`/${Routes.AUTH}/${Pages.ERROR}`, request.url));
+      console.error('Middleware Error:', error);
+      // في حالة حدوث خطأ، إعادة توجيه إلى صفحة الخطأ
+      const errorUrl = new URL(`/${Routes.AUTH}/${Pages.ERROR}`, process.env.NEXTAUTH_URL || request.url);
+      errorUrl.searchParams.set('error', 'Configuration');
+      return NextResponse.redirect(errorUrl);
     }
   },
   {
     callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-    pages: {
-      signIn: `/${Routes.AUTH}/${Pages.LOGIN}`,
-      error: `/${Routes.AUTH}/${Pages.ERROR}`,
+      authorized: () => true, // السماح للميدلوير بالتعامل مع الفحوصات
     },
   }
 );
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    "/((?!api|_next/static|_next/image|favicon.ico|public).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
   ],
 };
